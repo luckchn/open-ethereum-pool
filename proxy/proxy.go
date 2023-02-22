@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,10 +14,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/sammy007/open-ethereum-pool/policy"
-	"github.com/sammy007/open-ethereum-pool/rpc"
-	"github.com/sammy007/open-ethereum-pool/storage"
-	"github.com/sammy007/open-ethereum-pool/util"
+	"github.com/luckchn/open-ethereum-pool/policy"
+	"github.com/luckchn/open-ethereum-pool/rpc"
+	"github.com/luckchn/open-ethereum-pool/storage"
+	"github.com/luckchn/open-ethereum-pool/util"
 )
 
 type ProxyServer struct {
@@ -42,7 +43,7 @@ type Session struct {
 
 	// Stratum
 	sync.Mutex
-	conn  *net.TCPConn
+	conn  net.Conn
 	login string
 }
 
@@ -126,8 +127,9 @@ func NewProxy(cfg *Config, backend *storage.RedisClient) *ProxyServer {
 func (s *ProxyServer) Start() {
 	log.Printf("Starting proxy on %v", s.config.Proxy.Listen)
 	r := mux.NewRouter()
-	r.Handle("/{login:0x[0-9a-fA-F]{40}}/{id:[0-9a-zA-Z-_]{1,8}}", s)
+	r.Handle("/{login:0x[0-9a-fA-F]{40}}/{id:[0-9a-zA-Z-_]{1,32}}", s)
 	r.Handle("/{login:0x[0-9a-fA-F]{40}}", s)
+	r.HandleFunc("/notify", s.MiningNotify)
 	srv := &http.Server{
 		Addr:           s.config.Proxy.Listen,
 		Handler:        r,
@@ -136,6 +138,76 @@ func (s *ProxyServer) Start() {
 	err := srv.ListenAndServe()
 	if err != nil {
 		log.Fatalf("Failed to start proxy: %v", err)
+	}
+}
+
+func (s *ProxyServer) MiningNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "405 method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body := make([]byte, r.ContentLength)
+	r.Body.Read(body)
+
+	var reply []string
+	err := json.Unmarshal(body, &reply)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+
+	t := s.currentBlockTemplate()
+	// No need to update, we have fresh job
+	if t != nil {
+		if t.Header == reply[0] {
+			return
+		}
+		if _, ok := t.headers[reply[0]]; ok {
+			return
+		}
+	}
+	diff := util.TargetHexToDiff(reply[2])
+	height, err := strconv.ParseUint(strings.Replace(reply[3], "0x", "", -1), 16, 64)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	pendingReply := &rpc.GetBlockReplyPart{
+		Difficulty: util.ToHex(s.config.Proxy.Difficulty),
+		Number:     reply[3],
+	}
+
+	newTemplate := BlockTemplate{
+		Header:               reply[0],
+		Seed:                 reply[1],
+		Target:               reply[2],
+		Height:               height,
+		Difficulty:           diff,
+		GetPendingBlockCache: pendingReply,
+		headers:              make(map[string]heightDiffPair),
+	}
+	// Copy job backlog and add current one
+	newTemplate.headers[reply[0]] = heightDiffPair{
+		diff:   diff,
+		height: height,
+	}
+	if t != nil {
+		for k, v := range t.headers {
+			if v.height > height-maxBacklog {
+				newTemplate.headers[k] = v
+			}
+		}
+	}
+	s.blockTemplate.Store(&newTemplate)
+
+	log.Printf("New block notified at height %d / %s / %d", height, reply[0][0:10], diff)
+
+	// Stratum
+	if s.config.Proxy.Stratum.Enabled {
+		go s.broadcastNewJobs()
 	}
 }
 

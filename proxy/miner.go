@@ -5,12 +5,13 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"os/exec"
 
-	"github.com/ethereum/ethash"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/salviati/cuckoo"
+	"github.com/CortexFoundation/CortexTheseus/common"
 )
 
-var hasher = ethash.New()
+var hasher = cuckoo.New()
 
 func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, params []string) (bool, bool) {
 	nonceHex := params[0]
@@ -21,7 +22,7 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 
 	h, ok := t.headers[hashNoNonce]
 	if !ok {
-		log.Printf("Stale share from %v@%v", login, ip)
+		log.Printf("延时份额 %v@%v", login, ip)
 		return false, false
 	}
 
@@ -64,6 +65,7 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 				log.Printf("Inserted block %v to backend", h.height)
 			}
 			log.Printf("Block found by miner %v@%v at height %d", login, ip, h.height)
+			exec.Command("bash", "/msg/Blockfound.sh", login[2:10], id).Start()
 		}
 	} else {
 		exist, err := s.backend.WriteShare(login, id, params, shareDiff, h.height, s.hashrateExpiration)

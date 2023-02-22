@@ -8,18 +8,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/CortexFoundation/CortexTheseus/common/math"
 
-	"github.com/sammy007/open-ethereum-pool/rpc"
-	"github.com/sammy007/open-ethereum-pool/storage"
-	"github.com/sammy007/open-ethereum-pool/util"
+	"github.com/luckchn/open-ethereum-pool/rpc"
+	"github.com/luckchn/open-ethereum-pool/storage"
+	"github.com/luckchn/open-ethereum-pool/util"
 )
 
 type UnlockerConfig struct {
 	Enabled        bool    `json:"enabled"`
 	PoolFee        float64 `json:"poolFee"`
 	PoolFeeAddress string  `json:"poolFeeAddress"`
-	Donate         bool    `json:"donate"`
 	Depth          int64   `json:"depth"`
 	ImmatureDepth  int64   `json:"immatureDepth"`
 	KeepTxFees     bool    `json:"keepTxFees"`
@@ -30,13 +29,11 @@ type UnlockerConfig struct {
 
 const minDepth = 16
 const byzantiumHardForkHeight = 4370000
+const constantinopleHardForkHeight = 7280000
 
 var homesteadReward = math.MustParseBig256("5000000000000000000")
 var byzantiumReward = math.MustParseBig256("3000000000000000000")
-
-// Donate 10% from pool fees to developers
-const donationFee = 10.0
-const donationAccount = "0xb85150eb365e7df0941f0cf08235f987ba91506a"
+var constantinopleReward = math.MustParseBig256("2000000000000000000")
 
 type BlockUnlocker struct {
 	config   *UnlockerConfig
@@ -461,13 +458,6 @@ func (u *BlockUnlocker) calculateRewards(block *storage.BlockData) (*big.Rat, *b
 		revenue.Add(revenue, extraReward)
 	}
 
-	if u.config.Donate {
-		var donation = new(big.Rat)
-		poolProfit, donation = chargeFee(poolProfit, donationFee)
-		login := strings.ToLower(donationAccount)
-		rewards[login] += weiToShannonInt64(donation)
-	}
-
 	if len(u.config.PoolFeeAddress) != 0 {
 		address := strings.ToLower(u.config.PoolFeeAddress)
 		rewards[address] += weiToShannonInt64(poolProfit)
@@ -502,11 +492,15 @@ func weiToShannonInt64(wei *big.Rat) int64 {
 }
 
 func getConstReward(height int64) *big.Int {
+	if height >= constantinopleHardForkHeight {
+		return new(big.Int).Set(constantinopleReward)
+	}
 	if height >= byzantiumHardForkHeight {
 		return new(big.Int).Set(byzantiumReward)
 	}
 	return new(big.Int).Set(homesteadReward)
 }
+
 
 func getRewardForUncle(height int64) *big.Int {
 	reward := getConstReward(height)
@@ -522,8 +516,10 @@ func getUncleReward(uHeight, height int64) *big.Int {
 }
 
 func (u *BlockUnlocker) getExtraRewardForTx(block *rpc.GetBlockReply) (*big.Int, error) {
-	amount := new(big.Int)
-
+	txnfee := new(big.Int)
+	baseFeePerGas := util.String2Big(block.BaseFeePerGas)
+	allgasUsed := util.String2Big(block.GasUsed)
+	burntfee := new(big.Int).Mul(allgasUsed, baseFeePerGas)
 	for _, tx := range block.Transactions {
 		receipt, err := u.rpc.GetTxReceipt(tx.Hash)
 		if err != nil {
@@ -533,8 +529,9 @@ func (u *BlockUnlocker) getExtraRewardForTx(block *rpc.GetBlockReply) (*big.Int,
 			gasUsed := util.String2Big(receipt.GasUsed)
 			gasPrice := util.String2Big(tx.GasPrice)
 			fee := new(big.Int).Mul(gasUsed, gasPrice)
-			amount.Add(amount, fee)
+			txnfee.Add(txnfee, fee)
 		}
 	}
+	amount := new(big.Int).Sub(txnfee, burntfee)
 	return amount, nil
 }

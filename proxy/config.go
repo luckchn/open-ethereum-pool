@@ -1,10 +1,10 @@
 package proxy
 
 import (
-	"github.com/sammy007/open-ethereum-pool/api"
-	"github.com/sammy007/open-ethereum-pool/payouts"
-	"github.com/sammy007/open-ethereum-pool/policy"
-	"github.com/sammy007/open-ethereum-pool/storage"
+	"github.com/luckchn/open-ethereum-pool/api"
+	"github.com/luckchn/open-ethereum-pool/payouts"
+	"github.com/luckchn/open-ethereum-pool/policy"
+	"github.com/luckchn/open-ethereum-pool/storage"
 )
 
 type Config struct {
@@ -48,10 +48,13 @@ type Proxy struct {
 }
 
 type Stratum struct {
-	Enabled bool   `json:"enabled"`
-	Listen  string `json:"listen"`
-	Timeout string `json:"timeout"`
-	MaxConn int    `json:"maxConn"`
+	Enabled  bool   `json:"enabled"`
+	Listen   string `json:"listen"`
+	Timeout  string `json:"timeout"`
+	MaxConn  int    `json:"maxConn"`
+	TLS      bool   `json:"tls"`
+	CertFile string `json:"certFile"`
+	KeyFile  string `json:"keyFile"`
 }
 
 type Upstream struct {

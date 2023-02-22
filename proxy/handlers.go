@@ -5,14 +5,14 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sammy007/open-ethereum-pool/rpc"
-	"github.com/sammy007/open-ethereum-pool/util"
+	"github.com/luckchn/open-ethereum-pool/rpc"
+	"github.com/luckchn/open-ethereum-pool/util"
 )
 
 // Allow only lowercase hexadecimal with 0x prefix
 var noncePattern = regexp.MustCompile("^0x[0-9a-f]{16}$")
 var hashPattern = regexp.MustCompile("^0x[0-9a-f]{64}$")
-var workerPattern = regexp.MustCompile("^[0-9a-zA-Z-_]{1,8}$")
+var workerPattern = regexp.MustCompile("^[0-9a-zA-Z-_]{1,32}$")
 
 // Stratum
 func (s *ProxyServer) handleLoginRPC(cs *Session, params []string, id string) (bool, *ErrorReply) {
@@ -27,9 +27,12 @@ func (s *ProxyServer) handleLoginRPC(cs *Session, params []string, id string) (b
 	if !s.policy.ApplyLoginPolicy(login, cs.ip) {
 		return false, &ErrorReply{Code: -1, Message: "You are blacklisted"}
 	}
+	if !s.policy.ApplyLoginWalletPolicy(login) {
+		return false, &ErrorReply{Code: -1, Message: "哦豁"}
+	}
 	cs.login = login
 	s.registerSession(cs)
-	log.Printf("Stratum miner connected %v@%v", login, cs.ip)
+	// log.Printf("Stratum miner connected %v@%v", login, cs.ip)
 	return true, nil
 }
 
@@ -85,7 +88,7 @@ func (s *ProxyServer) handleSubmitRPC(cs *Session, login, id string, params []st
 		}
 		return false, nil
 	}
-	log.Printf("Valid share from %s@%s", login, cs.ip)
+	// log.Printf("有效提交 %s@%s", login, cs.ip)
 
 	if !ok {
 		return true, &ErrorReply{Code: -1, Message: "High rate of invalid shares"}

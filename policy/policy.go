@@ -1,26 +1,35 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/sammy007/open-ethereum-pool/storage"
-	"github.com/sammy007/open-ethereum-pool/util"
+	"github.com/luckchn/open-ethereum-pool/storage"
+	"github.com/luckchn/open-ethereum-pool/util"
 )
 
 type Config struct {
 	Workers         int     `json:"workers"`
 	Banning         Banning `json:"banning"`
 	Limits          Limits  `json:"limits"`
+	Whitemode    Whitemode  `json:"whitemode"`
 	ResetInterval   string  `json:"resetInterval"`
 	RefreshInterval string  `json:"refreshInterval"`
+	Walletblacklist string  `json:"blacklist_file"`
+	Walletwhitelist string  `json:"whitelist_file"`
 }
 
+type Whitemode struct {
+	Enabled bool `json:"enabled"`
+}
 type Limits struct {
 	Enabled   bool   `json:"enabled"`
 	Limit     int32  `json:"limit"`
@@ -62,6 +71,8 @@ type PolicyServer struct {
 	blacklist  []string
 	whitelist  []string
 	storage    *storage.RedisClient
+	walletblacklist []string
+	walletwhitelist []string
 }
 
 func Start(cfg *Config, storage *storage.RedisClient) *PolicyServer {
@@ -142,6 +153,46 @@ func (s *PolicyServer) resetStats() {
 	log.Printf("Flushed stats for %v IP addresses", total)
 }
 
+//loads up whitelist of wallets if file is present
+func (s *PolicyServer) GetWalletWhitelist() ([]string, error) {
+	whitelistFileName := s.config.Walletwhitelist
+	whitelistFileName, _ = filepath.Abs(whitelistFileName)
+	log.Printf("Loading wallet whitelist: %v", whitelistFileName)
+	whitelistFile, err := os.Open(whitelistFileName)
+	if err != nil {
+		log.Printf("File error: %v", err.Error())
+		return nil, err
+	}
+	defer whitelistFile.Close()
+	var wdata []string
+	jsonwhiteParser := json.NewDecoder(whitelistFile)
+	if err := jsonwhiteParser.Decode(&wdata); err != nil {
+		log.Printf("Whitelist parsing error: %v", err.Error())
+		return nil, err
+	}
+	return wdata, nil
+}
+
+//loads up blacklist of wallets if file is present
+func (s *PolicyServer) GetWalletBlacklist() ([]string, error) {
+	blacklistFileName := s.config.Walletblacklist
+	blacklistFileName, _ = filepath.Abs(blacklistFileName)
+	log.Printf("Loading wallet blacklist: %v", blacklistFileName)
+	blacklistFile, err := os.Open(blacklistFileName)
+	if err != nil {
+		log.Printf("File error: %v", err.Error())
+		return nil, err
+	}
+	defer blacklistFile.Close()
+	var bdata []string
+	jsonblackParser := json.NewDecoder(blacklistFile)
+	if err := jsonblackParser.Decode(&bdata); err != nil {
+		log.Printf("Blacklist parsing error: %v", err.Error())
+		return nil, err
+	}
+	return bdata, nil
+}
+
 func (s *PolicyServer) refreshState() {
 	s.Lock()
 	defer s.Unlock()
@@ -154,6 +205,14 @@ func (s *PolicyServer) refreshState() {
 	s.whitelist, err = s.storage.GetWhitelist()
 	if err != nil {
 		log.Printf("Failed to get whitelist from backend: %v", err)
+	}
+	s.walletwhitelist, err = s.GetWalletWhitelist()
+	if err != nil {
+		log.Printf("Failed to get wallet/login whitelist from json file backend: %v", err)
+	}
+	s.walletblacklist, err = s.GetWalletBlacklist()
+	if err != nil {
+		log.Printf("Failed to get wallet/login blacklist from json file backend: %v", err)
 	}
 	log.Println("Policy state refresh complete")
 }
@@ -200,6 +259,15 @@ func (s *PolicyServer) ApplyLimitPolicy(ip string) bool {
 	}
 	return true
 }
+func (s *PolicyServer) ApplyLoginWalletPolicy(login string) bool {
+	if (s.config.Whitemode.Enabled && !s.InWalletWhiteList(login)) {
+			return false
+		}
+		if s.InWalletBlackList(login) {
+		return false
+	}
+	return true
+}
 
 func (s *PolicyServer) ApplyLoginPolicy(addy, ip string) bool {
 	if s.InBlackList(addy) {
@@ -209,7 +277,16 @@ func (s *PolicyServer) ApplyLoginPolicy(addy, ip string) bool {
 	}
 	return true
 }
-
+func (s *PolicyServer) InWalletWhiteList(addy string) bool {
+	s.RLock()
+	defer s.RUnlock()
+	return util.StringInSlice(addy, s.walletwhitelist)
+}
+func (s *PolicyServer) InWalletBlackList(addy string) bool {
+	s.RLock()
+	defer s.RUnlock()
+	return util.StringInSlice(addy, s.walletblacklist)
+}
 func (s *PolicyServer) ApplyMalformedPolicy(ip string) bool {
 	x := s.Get(ip)
 	n := x.incrMalformed()

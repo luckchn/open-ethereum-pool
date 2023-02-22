@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/redis.v3"
 
-	"github.com/sammy007/open-ethereum-pool/util"
+	"github.com/luckchn/open-ethereum-pool/util"
 )
 
 type Config struct {
@@ -744,7 +744,7 @@ func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login 
 		}
 		worker.TotalHR = worker.TotalHR / boundary
 
-		if worker.LastBeat < (now - smallWindow/2) {
+		if worker.LastBeat < (now - smallWindow/3) {
 			worker.Offline = true
 			offline++
 		} else {

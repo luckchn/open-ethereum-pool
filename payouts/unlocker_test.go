@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sammy007/open-ethereum-pool/rpc"
-	"github.com/sammy007/open-ethereum-pool/storage"
+	"github.com/luckchn/open-ethereum-pool/rpc"
+	"github.com/luckchn/open-ethereum-pool/storage"
 )
 
 func TestMain(m *testing.M) {
@@ -108,7 +108,27 @@ func TestGetByzantiumUncleReward(t *testing.T) {
 	}
 }
 
-func TestGetRewardForUngle(t *testing.T) {
+func TestGetConstantinopleUncleReward(t *testing.T) {
+	rewards := make(map[int64]string)
+	expectedRewards := map[int64]string{
+		1: "1750000000000000000",
+		2: "1500000000000000000",
+		3: "1250000000000000000",
+		4: "1000000000000000000",
+		5: "750000000000000000",
+		6: "500000000000000000",
+		7: "250000000000000000",
+	}
+	for i := int64(1); i < 8; i++ {
+		rewards[i] = getUncleReward(constantinopleHardForkHeight, constantinopleHardForkHeight+i).String()
+	}
+	for i, reward := range rewards {
+		if expectedRewards[i] != rewards[i] {
+			t.Errorf("Incorrect uncle reward for %v, expected %v vs %v", i, expectedRewards[i], reward)
+		}
+	}
+}
+func TestGetRewardForUncle(t *testing.T) {
 	reward := getRewardForUncle(1).String()
 	expectedReward := "156250000000000000"
 	if expectedReward != reward {
@@ -116,11 +136,19 @@ func TestGetRewardForUngle(t *testing.T) {
 	}
 }
 
-func TestGetByzantiumRewardForUngle(t *testing.T) {
+func TestGetByzantiumRewardForUncle(t *testing.T) {
 	reward := getRewardForUncle(byzantiumHardForkHeight).String()
 	expectedReward := "93750000000000000"
 	if expectedReward != reward {
 		t.Errorf("Incorrect uncle bonus for height %v, expected %v vs %v", byzantiumHardForkHeight, expectedReward, reward)
+	}
+}
+
+func TestGetConstantinopleRewardForUncle(t *testing.T) {
+	reward := getRewardForUncle(constantinopleHardForkHeight).String()
+	expectedReward := "62500000000000000"
+	if expectedReward != reward {
+		t.Errorf("Incorrect uncle bonus for height %v, expected %v vs %v", constantinopleHardForkHeight, expectedReward, reward)
 	}
 }
 

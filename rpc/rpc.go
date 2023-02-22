@@ -12,9 +12,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/CortexFoundation/CortexTheseus/common/hexutil"
 
-	"github.com/sammy007/open-ethereum-pool/util"
+	"github.com/luckchn/open-ethereum-pool/util"
 )
 
 type RPCClient struct {
@@ -35,6 +35,7 @@ type GetBlockReply struct {
 	Difficulty   string   `json:"difficulty"`
 	GasLimit     string   `json:"gasLimit"`
 	GasUsed      string   `json:"gasUsed"`
+	BaseFeePerGas string  `json:"baseFeePerGas"`
 	Transactions []Tx     `json:"transactions"`
 	Uncles       []string `json:"uncles"`
 	// https://github.com/ethereum/EIPs/issues/95
@@ -51,6 +52,7 @@ const receiptStatusSuccessful = "0x1"
 type TxReceipt struct {
 	TxHash    string `json:"transactionHash"`
 	GasUsed   string `json:"gasUsed"`
+	BaseFeePerGas string `json:"baseFeePerGas"`
 	BlockHash string `json:"blockHash"`
 	Status    string `json:"status"`
 }
@@ -177,7 +179,7 @@ func (r *RPCClient) GetBalance(address string) (*big.Int, error) {
 
 func (r *RPCClient) Sign(from string, s string) (string, error) {
 	hash := sha256.Sum256([]byte(s))
-	rpcResp, err := r.doPost(r.Url, "eth_sign", []string{from, common.ToHex(hash[:])})
+	rpcResp, err := r.doPost(r.Url, "eth_sign", []string{from, hexutil.Encode(hash[:])})
 	var reply string
 	if err != nil {
 		return reply, err

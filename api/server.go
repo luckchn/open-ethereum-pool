@@ -12,8 +12,8 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/sammy007/open-ethereum-pool/storage"
-	"github.com/sammy007/open-ethereum-pool/util"
+	"github.com/luckchn/open-ethereum-pool/storage"
+	"github.com/luckchn/open-ethereum-pool/util"
 )
 
 type ApiConfig struct {
@@ -103,11 +103,11 @@ func (s *ApiServer) Start() {
 
 func (s *ApiServer) listen() {
 	r := mux.NewRouter()
-	r.HandleFunc("/api/stats", s.StatsIndex)
-	r.HandleFunc("/api/miners", s.MinersIndex)
-	r.HandleFunc("/api/blocks", s.BlocksIndex)
-	r.HandleFunc("/api/payments", s.PaymentsIndex)
-	r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}", s.AccountIndex)
+	r.HandleFunc("/ethapi/stats", s.StatsIndex)
+	r.HandleFunc("/ethapi/miners", s.MinersIndex)
+	r.HandleFunc("/ethapi/blocks", s.BlocksIndex)
+	r.HandleFunc("/ethapi/payments", s.PaymentsIndex)
+	r.HandleFunc("/ethapi/accounts/{login:0x[0-9a-fA-F]{40}}", s.AccountIndex)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 	err := http.ListenAndServe(s.config.Listen, r)
 	if err != nil {
